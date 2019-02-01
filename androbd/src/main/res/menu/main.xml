@@ -16,6 +16,10 @@
         android:visible="false"
         />
     <item
+        android:id="@+id/gear"
+        android:showAsAction="ifRoom"
+        android:title="Gear Display"/>
+    <item
         android:id="@+id/day_night_mode"
         android:icon="@drawable/ic_daynight"
         android:showAsAction="ifRoom"

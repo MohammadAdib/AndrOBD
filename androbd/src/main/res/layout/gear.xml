@@ -5,11 +5,22 @@
     android:layout_height="match_parent">
 
     <TextView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:id="@+id/gear"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
         android:gravity="center"
         android:textSize="500sp"
         android:textColor="@android:color/holo_red_dark"
-        android:includeFontPadding="false"
         android:text="0"/>
+
+    <TextView
+        android:id="@+id/debugGear"
+        android:layout_width="wrap_content"
+        android:textColor="#333"
+        android:includeFontPadding="false"
+        android:padding="8dp"
+        android:textSize="10sp"
+        android:text="DEBUG"
+        android:layout_height="wrap_content" />
 </RelativeLayout>

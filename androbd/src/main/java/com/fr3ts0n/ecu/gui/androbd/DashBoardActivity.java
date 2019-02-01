@@ -18,16 +18,21 @@
 
 package com.fr3ts0n.ecu.gui.androbd;
 
+import android.annotation.SuppressLint;
 import android.app.ActionBar;
 import android.app.Activity;
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
 import android.util.DisplayMetrics;
+import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.GridView;
 import android.widget.ListAdapter;
+import android.widget.TextView;
 
 import com.fr3ts0n.ecu.EcuDataPv;
 import com.fr3ts0n.ecu.prot.obd.ObdProt;
@@ -41,219 +46,277 @@ import java.util.TimerTask;
 /**
  * Display selected data items as dashboard
  */
-public class DashBoardActivity extends Activity
-{
-	/**
-	 * For passing the index number of the <code>Sensor</code> in its
-	 * <code>SensorManager</code>
-	 */
-	public static final String POSITIONS = "POSITIONS";
-	/**
-	 * For passing the resource id of the <code>dashboard display</code>
-	 */
-	public static final String RES_ID = "RES_ID";
+public class DashBoardActivity extends Activity {
+    /**
+     * For passing the index number of the <code>Sensor</code> in its
+     * <code>SensorManager</code>
+     */
+    public static final String POSITIONS = "POSITIONS";
+    /**
+     * For passing the resource id of the <code>dashboard display</code>
+     */
+    public static final String RES_ID = "RES_ID";
 
-	/**
-	 * Minimum size for gauges to be displayed
-	 */
-	private static int MIN_GAUGE_SIZE = 300; /* dp */
+    /**
+     * Minimum size for gauges to be displayed
+     */
+    private static int MIN_GAUGE_SIZE = 300; /* dp */
 
-	/**
-	 * the wake lock to keep app communication alive
-	 */
-	private static PowerManager.WakeLock wakeLock;
-	private transient ObdGaugeAdapter adapter;
-	private transient GridView grid;
+    /**
+     * the wake lock to keep app communication alive
+     */
+    private static PowerManager.WakeLock wakeLock;
+    private transient ObdGaugeAdapter adapter;
+    private transient GridView grid;
 
-	/** Map to uniquely collect PID numbers */
-	private final HashSet<Integer> pidNumbers = new HashSet<>();
+    /**
+     * Map to uniquely collect PID numbers
+     */
+    private final HashSet<Integer> pidNumbers = new HashSet<>();
 
-	private static final int MESSAGE_UPDATE_VIEW = 7;
+    private static final int MESSAGE_UPDATE_VIEW = 7;
 
-	private static ListAdapter mAdapter = null;
-	/** display metrics */
-	private static final DisplayMetrics metrics = new DisplayMetrics();
+    private static ListAdapter mAdapter = null;
+    /**
+     * display metrics
+     */
+    private static final DisplayMetrics metrics = new DisplayMetrics();
 
-	/** record positions to be charted */
-	private transient int[] positions;
+    /**
+     * record positions to be charted
+     */
+    private transient int[] positions;
 
-	/** data adapter as source of display data */
-	public static ListAdapter getAdapter()
-	{
-		return mAdapter;
-	}
+    /**
+     * data adapter as source of display data
+     */
+    public static ListAdapter getAdapter() {
+        return mAdapter;
+    }
 
-	// screen distribution matrix
-	private static final int[][] rowCols=
-	{
-		{1,1},{1,1},{2,1},{2,2},{2,2},{3,2},{3,2},{4,2},{4,2},{3,3},
-		{4,3},{4,3},{4,3},{4,4},{4,4},{4,4},{4,4},{5,4},{5,4},{5,4},{5,4}
-	};
+    // screen distribution matrix
+    private static final int[][] rowCols =
+            {
+                    {1, 1}, {1, 1}, {2, 1}, {2, 2}, {2, 2}, {3, 2}, {3, 2}, {4, 2}, {4, 2}, {3, 3},
+                    {4, 3}, {4, 3}, {4, 3}, {4, 4}, {4, 4}, {4, 4}, {4, 4}, {5, 4}, {5, 4}, {5, 4}, {5, 4}
+            };
 
 
-	/**
-	 * Set list adapter as data source of display
-	 * @param Adapter List adapter
-	 */
-	public static void setAdapter(ListAdapter Adapter)
-	{
-		mAdapter = Adapter;
-	}
+    /**
+     * Set list adapter as data source of display
+     *
+     * @param Adapter List adapter
+     */
+    public static void setAdapter(ListAdapter Adapter) {
+        mAdapter = Adapter;
+    }
 
-	/**
-	 * Handle message requests
-	 */
-	private transient final Handler mHandler = new Handler()
-	{
-		@Override
-		public void handleMessage(Message msg)
-		{
+    /**
+     * Handle message requests
+     */
+    @SuppressLint("HandlerLeak")
+    private transient final Handler mHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case MESSAGE_UPDATE_VIEW:
+                    grid.invalidateViews();
+                    setupGear();
+                    break;
+            }
+        }
+    };
 
-			switch (msg.what)
-			{
-				case MESSAGE_UPDATE_VIEW:
-					grid.invalidateViews();
-					break;
-			}
-		}
-	};
+    private final Timer refreshTimer = new Timer();
 
-	private final Timer refreshTimer = new Timer();
+    /**
+     * Timer Task to cyclically update data screen
+     */
+    private final TimerTask updateTask = new TimerTask() {
+        @Override
+        public void run() {
+            /* forward message to update the view */
+            Message msg = mHandler.obtainMessage(MainActivity.MESSAGE_UPDATE_VIEW);
+            mHandler.sendMessage(msg);
+            if (gearMode) {
 
-	/**
-	 * Timer Task to cyclically update data screen
-	 */
-	private final TimerTask updateTask = new TimerTask()
-	{
-		@Override
-		public void run()
-		{
-			/* forward message to update the view */
-			Message msg = mHandler.obtainMessage(MainActivity.MESSAGE_UPDATE_VIEW);
-			mHandler.sendMessage(msg);
-		}
-	};
+            }
+        }
+    };
 
-	@Override
-	public void onCreate(Bundle savedInstanceState)
-	{
-		super.onCreate(savedInstanceState);
-		// set to full screen
-		getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+    private boolean gearMode = false;
 
-		// keep main display on?
-		if(MainActivity.prefs.getBoolean("keep_screen_on", false))
-		{
-			getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-		}
-		// hide the action bar
-		ActionBar actionBar = getActionBar();
-		if (actionBar != null) actionBar.hide();
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // set to full screen
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-		// prevent activity from falling asleep
-		PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-		wakeLock = Objects.requireNonNull(powerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-			getString(R.string.app_name));
-		wakeLock.acquire();
+        // keep main display on?
+        if (MainActivity.prefs.getBoolean("keep_screen_on", false)) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+        // hide the action bar
+        ActionBar actionBar = getActionBar();
+        if (actionBar != null) actionBar.hide();
 
-		/* get PIDs to be shown */
-		positions = getIntent().getIntArrayExtra(POSITIONS);
-	}
+        // prevent activity from falling asleep
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        wakeLock = Objects.requireNonNull(powerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                getString(R.string.app_name));
+        wakeLock.acquire();
 
-	/**
-	 * Handle destroy of the Activity
-	 */
-	@Override
-	protected void onDestroy()
-	{
-		// reset PID limiting
-		ObdProt.resetFixedPid();
-		adapter.clear();
-		// allow sleeping again
-		wakeLock.release();
-		super.onDestroy();
-	}
+        /* get PIDs to be shown */
+        positions = getIntent().getIntArrayExtra(POSITIONS);
+    }
 
-	/* (non-Javadoc)
-	 * @see android.app.Activity#onResume()
-	 */
-	@Override
-	protected void onResume()
-	{
-		EcuDataPv currPv;
+    /**
+     * Handle destroy of the Activity
+     */
+    @Override
+    protected void onDestroy() {
+        // reset PID limiting
+        ObdProt.resetFixedPid();
+        adapter.clear();
+        // allow sleeping again
+        wakeLock.release();
+        super.onDestroy();
+    }
 
-		super.onResume();
-		// set the desired content screen
-		int resId = getIntent().getIntExtra(RES_ID, R.layout.dashboard);
-		setContentView(resId);
+    /* (non-Javadoc)
+     * @see android.app.Activity#onResume()
+     */
+    @Override
+    protected void onResume() {
+        Log.d("Gears", "DASHBOARD");
+        EcuDataPv currPv;
 
-		// calculate minimum gauge size (1.6 inch) based on screen density
-		getWindowManager().getDefaultDisplay().getMetrics(metrics);
-		MIN_GAUGE_SIZE = Math.min( metrics.densityDpi * 16 / 10,
-		                           Math.min(metrics.widthPixels, metrics.heightPixels));
+        super.onResume();
+        // set the desired content screen
+        int resId = getIntent().getIntExtra(RES_ID, R.layout.dashboard);
+        setContentView(resId);
 
-		int height = metrics.heightPixels;
-		int width = metrics.widthPixels;
-		int numColumns = Math.max(1, Math.min(positions.length, width / MIN_GAUGE_SIZE));
-		int numRows = Math.max(1, Math.min(positions.length, height / MIN_GAUGE_SIZE));
+        // calculate minimum gauge size (1.6 inch) based on screen density
+        getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        MIN_GAUGE_SIZE = Math.min(metrics.densityDpi * 16 / 10,
+                Math.min(metrics.widthPixels, metrics.heightPixels));
 
-		// distribute gauges on screen
-		if(positions.length < numColumns*numRows)
-		{
-			// read for corresponding number of gauges & orientation
-			numColumns = rowCols[positions.length][(width>height)?0:1];
-			numRows    = rowCols[positions.length][(width>height)?1:0];
-		}
-		// calc max gauge size
-		int minWidth = width / numColumns;
-		int minHeight = height / numRows;
+        int height = metrics.heightPixels;
+        int width = metrics.widthPixels;
+        int numColumns = Math.max(1, Math.min(positions.length, width / MIN_GAUGE_SIZE));
+        int numRows = Math.max(1, Math.min(positions.length, height / MIN_GAUGE_SIZE));
 
-		/* get grid object */
-		grid = findViewById(android.R.id.list);
-		grid.setNumColumns(numColumns);
+        // distribute gauges on screen
+        if (positions.length < numColumns * numRows) {
+            // read for corresponding number of gauges & orientation
+            numColumns = rowCols[positions.length][(width > height) ? 0 : 1];
+            numRows = rowCols[positions.length][(width > height) ? 1 : 0];
+        }
+        // calc max gauge size
+        int minWidth = width / numColumns;
+        int minHeight = height / numRows;
 
-		// set data adapter
-		adapter = new ObdGaugeAdapter( this,
-		                               R.layout.obd_gauge,
-		                               minWidth,
-		                               minHeight,
-		                               metrics);
+        /* get grid object */
+        grid = findViewById(android.R.id.list);
+        grid.setNumColumns(numColumns);
 
-		pidNumbers.clear();
-		for (int position : positions)
-		{
-			// get corresponding Process variable
-			currPv = (EcuDataPv) mAdapter.getItem(position);
-			if (currPv != null)
-			{
-				currPv.setRenderingComponent(null);
-				pidNumbers.add(currPv.getAsInt(EcuDataPv.FID_PID));
-				adapter.add(currPv);
-			}
-		}
-		grid.setAdapter(adapter);
-		// limit selected PIDs to selection
-		MainActivity.setFixedPids(pidNumbers);
+        // set data adapter
+        adapter = new ObdGaugeAdapter(this,
+                R.layout.obd_gauge,
+                minWidth,
+                minHeight,
+                metrics);
 
-		// start display update task
-		try
-		{
-			refreshTimer.schedule(updateTask, 0, 100);
-		} catch (Exception e)
-		{
-			// exception ignored here ...
-		}
-	}
+        pidNumbers.clear();
+        for (int position : positions) {
+            // get corresponding Process variable
+            currPv = (EcuDataPv) mAdapter.getItem(position);
+            if (currPv != null) {
+                currPv.setRenderingComponent(null);
+                pidNumbers.add(currPv.getAsInt(EcuDataPv.FID_PID));
+                adapter.add(currPv);
+            }
+        }
+        grid.setAdapter(adapter);
+        // limit selected PIDs to selection
+        MainActivity.setFixedPids(pidNumbers);
 
-	/* (non-Javadoc)
-	 * @see android.app.Activity#onPause()
-	 */
-	@Override
-	protected void onPause()
-	{
-		refreshTimer.purge();
-		adapter.clear();
-		super.onPause();
-	}
+        // Check if selected rpm and speed (12/13)
+        if (pidNumbers.size() == 2 && pidNumbers.contains(12) && pidNumbers.contains(13)) {
+            Log.d("Gear", "GEAR MODE");
+            gearMode = true;
+            TextView gear = findViewById(R.id.gear);
+            Typeface face = Typeface.createFromAsset(getAssets(),
+                    "radioland.ttf");
+            gear.setTypeface(face);
+            setupGear();
+        } else {
+            gearMode = false;
+        }
+
+        findViewById(R.id.gear_layout).setVisibility(gearMode ? View.VISIBLE : View.GONE);
+
+        // start display update task
+        try {
+            refreshTimer.schedule(updateTask, 0, 100);
+        } catch (Exception e) {
+            // exception ignored here ...
+        }
+    }
+
+    private void setupGear() {
+        TextView gear = findViewById(R.id.gear);
+        TextView debugGear = findViewById(R.id.debugGear);
+        EcuDataPv item1 = adapter.getItem(0);
+        EcuDataPv item2 = adapter.getItem(1);
+
+        int RPM = 0;
+        double speed = 0;
+        double kmhConverter = 0.621371;
+
+        if (item1.getAsInt(EcuDataPv.FID_PID) == 12) {
+            RPM = item1.getAsInt(EcuDataPv.FID_VALUE);
+        } else {
+            speed = item1.getAsInt(EcuDataPv.FID_VALUE);
+        }
+
+        if (item2.getAsInt(EcuDataPv.FID_PID) == 12) {
+            RPM = item2.getAsInt(EcuDataPv.FID_VALUE);
+        } else {
+            speed = item2.getAsInt(EcuDataPv.FID_VALUE);
+        }
+
+        speed = speed * kmhConverter;
+
+        speed = 22;
+        RPM = 4000;
+
+        double ratio = speed / RPM;
+
+        String g = "N";
+        String debug = "Speed = " + speed + "\nRPM = " + RPM + "\nRatio = " + (ratio);
+        for(int i = 0; i < SPEEDS.length; i++) {
+            debug += "\nRatio " + (i +1)  + ": " + SPEEDS[i] / MAX_RPM;
+            if(ratio > SPEEDS[i] / MAX_RPM) {
+                g = (i + 1) + "";
+            }
+        }
+
+        gear.setText(g);
+        debugGear.setText(debug);
+    }
+
+    private static int MAX_RPM = 7000;
+    private static double[] SPEEDS = new double[]{38, 65, 97, 130, 161, 197};
+
+    /* (non-Javadoc)
+     * @see android.app.Activity#onPause()
+     */
+    @Override
+    protected void onPause() {
+        refreshTimer.purge();
+        adapter.clear();
+        super.onPause();
+    }
 
 }

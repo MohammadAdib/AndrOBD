@@ -170,7 +170,7 @@ class ObdItemAdapter extends ArrayAdapter<Object>
 
 		// description text
 		TextView tvDescr = convertView.findViewById(R.id.obd_label);
-		tvDescr.setText(String.valueOf(Objects.requireNonNull(currPv).get(EcuDataPv.FID_DESCRIPT)));
+		tvDescr.setText(currPv.get(EcuDataPv.FID_DESCRIPT) + " >>> " + currPv.get(EcuDataPv.FID_PID));
 		TextView tvValue = convertView.findViewById(R.id.obd_value);
 		TextView tvUnits = convertView.findViewById(R.id.obd_units);
 		ProgressBar pb = convertView.findViewById(R.id.bar);
