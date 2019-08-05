@@ -275,7 +275,7 @@ public class MainActivity extends PluginManager
     /**
      * activation of night mode
      */
-    private boolean nightMode = false;
+    private boolean nightMode = true;
     /**
      * current OBD service
      */
@@ -729,7 +729,7 @@ public class MainActivity extends PluginManager
 
         // night mode
         if (key == null || NIGHT_MODE.equals(key))
-            setNightMode(prefs.getBoolean(NIGHT_MODE, false));
+            setNightMode(true);
 
         // set default comm medium
         if (key == null || SettingsActivity.KEY_COMM_MEDIUM.equals(key))
@@ -1155,7 +1155,7 @@ public class MainActivity extends PluginManager
     }
 
     private void setNightMode(boolean nightMode) {
-        this.nightMode = nightMode;
+        this.nightMode = true;
         setTheme(nightMode ? R.style.AppTheme_Dark : R.style.AppTheme);
         getWindow().getDecorView().setBackgroundColor(nightMode ? Color.BLACK : Color.WHITE);
         setObdService(obdService, null);
@@ -1856,12 +1856,13 @@ public class MainActivity extends PluginManager
                 case GEAR:
                     if (CommService.elm.getService() == ObdProt.OBD_SVC_DATA) {
                         int count = getListView().getAdapter().getCount();
-                        int[] selectedPositions = new int[2];
+                        int[] selectedPositions = new int[3];
+                        int x = 0;
                         for (int i = 0; i < count; i++) {
                             EcuDataPv item = (EcuDataPv) getListView().getItemAtPosition(i);
                             int pid = item.getAsInt(EcuDataPv.FID_PID);
-                            if (pid == 12 || pid == 13) {
-                                selectedPositions[pid - 12] = pid;
+                            if (pid == 12 || pid == 13 || pid == 17) {
+                                selectedPositions[x++] = i;
                             }
                         }
                         DashBoardActivity.setAdapter(getListAdapter());

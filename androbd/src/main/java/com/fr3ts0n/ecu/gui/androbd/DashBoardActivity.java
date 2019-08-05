@@ -32,6 +32,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.GridView;
 import android.widget.ListAdapter;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.fr3ts0n.ecu.EcuDataPv;
@@ -120,8 +121,9 @@ public class DashBoardActivity extends Activity {
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case MESSAGE_UPDATE_VIEW:
-                    grid.invalidateViews();
+                    Log.d("Gear", "Update view");
                     setupGear();
+                    grid.invalidateViews();
                     break;
             }
         }
@@ -138,9 +140,6 @@ public class DashBoardActivity extends Activity {
             /* forward message to update the view */
             Message msg = mHandler.obtainMessage(MainActivity.MESSAGE_UPDATE_VIEW);
             mHandler.sendMessage(msg);
-            if (gearMode) {
-
-            }
         }
     };
 
@@ -242,7 +241,7 @@ public class DashBoardActivity extends Activity {
         MainActivity.setFixedPids(pidNumbers);
 
         // Check if selected rpm and speed (12/13)
-        if (pidNumbers.size() == 2 && pidNumbers.contains(12) && pidNumbers.contains(13)) {
+        if (pidNumbers.size() == 3) {
             Log.d("Gear", "GEAR MODE");
             gearMode = true;
             TextView gear = findViewById(R.id.gear);
@@ -256,54 +255,63 @@ public class DashBoardActivity extends Activity {
 
         findViewById(R.id.gear_layout).setVisibility(gearMode ? View.VISIBLE : View.GONE);
 
-        // start display update task
-        try {
-            refreshTimer.schedule(updateTask, 0, 100);
-        } catch (Exception e) {
-            // exception ignored here ...
-        }
+        refreshTimer.schedule(updateTask, 0, 100);
     }
 
     private void setupGear() {
-        TextView gear = findViewById(R.id.gear);
-        TextView debugGear = findViewById(R.id.debugGear);
-        EcuDataPv item1 = adapter.getItem(0);
-        EcuDataPv item2 = adapter.getItem(1);
+        if (adapter.getCount() == 3) {
+            findViewById(R.id.gear_layout).setVisibility(View.VISIBLE);
+            TextView gear = findViewById(R.id.gear);
+            TextView debugGear = findViewById(R.id.debugGear);
+            ProgressBar throttleBar = findViewById(R.id.throttle);
+            EcuDataPv[] items = new EcuDataPv[]{adapter.getItem(0),
+                    adapter.getItem(1),
+                    adapter.getItem(2)};
 
-        int RPM = 0;
-        double speed = 0;
-        double kmhConverter = 0.621371;
+            int RPM = 0;
+            double speed = 0;
+            double throttle = 0;
+            double kmhConverter = 0.621371;
 
-        if (item1.getAsInt(EcuDataPv.FID_PID) == 12) {
-            RPM = item1.getAsInt(EcuDataPv.FID_VALUE);
-        } else {
-            speed = item1.getAsInt(EcuDataPv.FID_VALUE);
-        }
 
-        if (item2.getAsInt(EcuDataPv.FID_PID) == 12) {
-            RPM = item2.getAsInt(EcuDataPv.FID_VALUE);
-        } else {
-            speed = item2.getAsInt(EcuDataPv.FID_VALUE);
-        }
-
-        speed = speed * kmhConverter;
-
-        speed = 22;
-        RPM = 4000;
-
-        double ratio = speed / RPM;
-
-        String g = "N";
-        String debug = "Speed = " + speed + "\nRPM = " + RPM + "\nRatio = " + (ratio);
-        for(int i = 0; i < SPEEDS.length; i++) {
-            debug += "\nRatio " + (i +1)  + ": " + SPEEDS[i] / MAX_RPM;
-            if(ratio > SPEEDS[i] / MAX_RPM) {
-                g = (i + 1) + "";
+            for (EcuDataPv item : items) {
+                double value = Double.parseDouble(item.get("VALUE").toString());
+                ;
+                switch (item.getAsInt(EcuDataPv.FID_PID)) {
+                    case 12:
+                        RPM = (int) value;
+                        break;
+                    case 13:
+                        speed = value;
+                        break;
+                    case 17:
+                        throttle = value;
+                        break;
+                }
             }
-        }
 
-        gear.setText(g);
-        debugGear.setText(debug);
+            speed = speed * kmhConverter;
+
+            double ratio = speed / RPM;
+
+            String g = "N";
+            String debug = "Speed = " + speed + "\nRPM = " + RPM + "\nRatio = " + (ratio) +
+                    "\nThrottle: " + throttle;
+            for (int i = 0; i < SPEEDS.length; i++) {
+                debug += "\nRatio " + (i + 1) + ": " + SPEEDS[i] / MAX_RPM;
+                if (ratio > SPEEDS[i] / MAX_RPM) {
+                    g = (i + 1) + "";
+                }
+            }
+
+            gear.setText(g);
+            throttleBar.setProgress((int) throttle);
+            debugGear.setText(debug);
+            Log.d("Gear", "speed: " + speed + " rpm: " + RPM + " throttle: " + throttle);
+        } else {
+            gearMode = false;
+            findViewById(R.id.gear_layout).setVisibility(View.GONE);
+        }
     }
 
     private static int MAX_RPM = 7000;

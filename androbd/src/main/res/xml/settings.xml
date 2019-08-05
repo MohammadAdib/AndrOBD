@@ -119,7 +119,7 @@
 
 
             <ListPreference
-                android:defaultValue="0"
+                android:defaultValue="3"
                 android:dialogTitle="@string/select_protocol"
                 android:entries="@array/empty"
                 android:entryValues="@array/empty"
